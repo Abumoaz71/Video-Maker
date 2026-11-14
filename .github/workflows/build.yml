@@ -1,0 +1,54 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          rm -rf proj
+          mkdir proj
+          unzip -q VideoMaker.zip -d proj
+          if [ ! -f proj/settings.gradle.kts ]; then
+            inner=$(dirname "$(find proj -name settings.gradle.kts | head -n 1)")
+            mv "$inner"/* proj/ || true
+          fi
+          ls proj
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Build debug APK
+        working-directory: proj
+        run: |
+          set -o pipefail
+          gradle assembleDebug --stacktrace 2>&1 | tee ../build.log
+
+      - name: Error summary
+        if: failure()
+        run: |
+          {
+            echo '## أخطاء البناء'
+            echo '```'
+            grep -E "^e: |error:|FAILED|What went wrong" -A2 build.log | head -80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoMaker-debug-apk
+          path: proj/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
